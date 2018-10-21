@@ -12,6 +12,8 @@ from Crypto.Hash import SHA
 from Crypto.PublicKey import RSA
 from Crypto.Signature import PKCS1_v1_5
 
+blockchain_blueprint = Blueprint('blockchain', __name__)
+
 MINING_SENDER = 'BLOCKCHAIN'
 MINING_REWARD = 1
 MINING_DIFFICULTY = 2
@@ -21,7 +23,7 @@ class Blockchain:
 		self.transactions = []
 		self.chain = []
 		self.nodes = set()
-		self.node_id = str(uuid4().replace('-', ''))
+		self.node_id = str(uuid4()).replace('-', '')
 		self.create_block(0, '00')
 
 	def register_node(self, node_url):
@@ -136,3 +138,87 @@ class Blockchain:
 			return True
 
 		return False
+
+blockchain = Blockchain()
+
+@blockchain_blueprint.route('/transactions/new', methods=['POST'])
+def new_transaction():
+	post_data = request.get_json()
+	response = {
+		'status': 'fail'
+	}
+	if not post_data:
+		return jsonify(response), 400
+	sender_address = post_data.get('send_address')
+	receive_address = post_data.get('receive_address')
+	amount = post_data.get('amount')
+	signature = post_data.get('signature')
+
+	transaction_result = blockchain.submit_transaction(sender_address, receive_address, amount, signature)
+	if transaction_result == False:
+		response['message'] = 'Invalid transaction!'
+		return jsonify(response), 406
+	else:
+		response['message'] = f'Transaction added to block {str(transaction_result)}'
+
+@blockchain_blueprint.route('/transactions', methods=['GET'])
+def get_transactions():
+	transactions = blockchain.transactions
+	response = {'transactions', transactions}
+	return jsonify(response), 200
+
+@blockchain_blueprint.route('/chain', methods=['GET'])
+def chain():
+	response = {
+		'chain': blockchain.chain,
+		'length': len(blockchain.chain)
+	}
+	return jsonify(response), 200
+
+@blockchain_blueprint.route('/mine', methods=['POST'])
+def mine():
+	last_block = blockchain.chain[-1]
+	nonce = blockchain.proof_of_work()
+
+	blockchain.submit_transaction(
+		sender_address=MINING_SENDER,
+		receive_address=blockchain.node_id,
+		value=MINING_REWARD,
+		signature=''
+	)
+	previous_hash = blockchain.hash(last_block)
+	block = blockchain.create_block(nonce, previous_hash)
+
+	response = {
+		'message': 'New block created',
+		'block_number': block['block_number'],
+		'transactions': block['transactions'],
+		'nonce': block['nonce'],
+		'previous_hash': block['previous_hash']
+	}
+	return jsonify(response), 200
+
+@blockchain_blueprint.route('/nodes/register', methods=['POST'])
+def register_nodes():
+	pass
+
+@blockchain_blueprint.route('/nodes/resolve', methods=['GET'])
+def resolve_block():
+	replaced = blockchain.resolve_conflicts()
+	if replaced:
+		response = {
+			'message': 'Our chain was replaced',
+			'new_chain': blockchain.chain
+		}
+	else:
+		response = {
+			'message': 'Our chain is authoritative',
+			'chain': blockchain.chain
+		}
+	return jsonify(response), 200
+
+@blockchain_blueprint.route('/nodes/get', methods=['GET'])
+def get_nodes():
+	nodes = list(blockchain.nodes)
+	response = {'nodes', nodes}
+	return jsonify(response), 200

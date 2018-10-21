@@ -5,5 +5,7 @@ def create_app():
 
 	from blockchain.api.transaction import transaction_blueprint
 	app.register_blueprint(transaction_blueprint)
+	from blockchain.api.blockchain import blockchain_blueprint
+	app.register_blueprint(blockchain_blueprint)
 
 	return app
